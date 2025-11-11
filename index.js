@@ -147,6 +147,102 @@ app.delete("/api/products/:id", async (req, res) => {
   }
 });
 
+/**
+ * [GET] /api/purchases
+ */
+app.get("/api/purchases", async (req, res) => {
+  const query = `
+      SELECT 
+          p.id AS purchase_id, p.total, p.status, p.purchase_date,
+          u.name AS user_name,
+          pd.id AS detail_id, pd.quantity, pd.price, pd.subtotal,
+          pr.name AS product_name
+      FROM purchases p
+      JOIN users u ON p.user_id = u.id
+      LEFT JOIN purchase_details pd ON p.id = pd.purchase_id
+      LEFT JOIN products pr ON pd.product_id = pr.id
+      ORDER BY p.id, pd.id;
+  `;
+  try {
+    const [rows] = await pool.query(query);
+    const purchasesMap = new Map();
+    for (const row of rows) {
+      if (!purchasesMap.has(row.purchase_id)) {
+        purchasesMap.set(row.purchase_id, {
+          id: row.purchase_id,
+          user: row.user_name,
+          total: row.total,
+          status: row.status,
+          purchase_date: row.purchase_date,
+          details: [],
+        });
+      }
+      if (row.detail_id) {
+        purchasesMap.get(row.purchase_id).details.push({
+          id: row.detail_id,
+          product: row.product_name,
+          quantity: row.quantity,
+          price: row.price,
+          subtotal: row.subtotal,
+        });
+      }
+    }
+    const result = Array.from(purchasesMap.values());
+    res.json(result);
+  } catch (err) {
+    console.error("Error executing query", err);
+    res.status(500).send("Error retrieving purchases");
+  }
+});
+
+/**
+ * [GET] /api/purchases/:id
+ */
+app.get("/api/purchases/:id", async (req, res) => {
+  const { id } = req.params;
+  const query = `
+      SELECT 
+          p.id AS purchase_id, p.total, p.status, p.purchase_date,
+          u.name AS user_name,
+          pd.id AS detail_id, pd.quantity, pd.price, pd.subtotal,
+          pr.name AS product_name
+      FROM purchases p
+      JOIN users u ON p.user_id = u.id
+      LEFT JOIN purchase_details pd ON p.id = pd.purchase_id
+      LEFT JOIN products pr ON pd.product_id = pr.id
+      WHERE p.id = ?;
+  `;
+  try {
+    const [rows] = await pool.query(query, [id]);
+    if (rows.length === 0) {
+      return res.status(404).json({ error: "Compra no encontrada" });
+    }
+    const purchaseResult = {
+      id: rows[0].purchase_id,
+      user: rows[0].user_name,
+      total: rows[0].total,
+      status: rows[0].status,
+      purchase_date: rows[0].purchase_date,
+      details: [],
+    };
+    for (const row of rows) {
+      if (row.detail_id) {
+        purchaseResult.details.push({
+          id: row.detail_id,
+          product: row.product_name,
+          quantity: row.quantity,
+          price: row.price,
+          subtotal: row.subtotal,
+        });
+      }
+    }
+    res.json(purchaseResult);
+  } catch (err) {
+    console.error("Error executing query", err);
+    res.status(500).send("Error retrieving purchase");
+  }
+});
+
 // Iniciar el servidor
 app.listen(port, () => {
   console.log(`App listening at http://localhost:${port}`);
